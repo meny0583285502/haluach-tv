@@ -1,0 +1,33 @@
+plugins { id 'com.android.application' }
+
+def runNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
+
+android {
+    namespace 'com.meny.haluachtv'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'com.meny.haluachtv'
+        minSdk 21
+        targetSdk 34
+        versionCode runNo
+        versionName "1.0.${runNo}"
+    }
+    signingConfigs {
+        release {
+            storeFile rootProject.file('keystore.jks')
+            storePassword 'haluach123'
+            keyAlias 'haluach'
+            keyPassword 'haluach123'
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.release }
+        debug { signingConfig signingConfigs.release }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lint { abortOnError false; checkReleaseBuilds false }
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }

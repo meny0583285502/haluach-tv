@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">הלוח</string>
+    <string name="guard_label">הלוח - נעילת מסך</string>
+    <string name="guard_desc">שומר שהטלוויזיה תציג תמיד את הלוח. אי אפשר לצאת בלי סיסמת מנהל.</string>
+</resources>
