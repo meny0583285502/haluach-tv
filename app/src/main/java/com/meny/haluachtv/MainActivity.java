@@ -2,7 +2,11 @@ package com.meny.haluachtv;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkInfo;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,6 +17,7 @@ import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -30,11 +35,50 @@ public class MainActivity extends Activity {
     private long backFirst = 0;
     private boolean offline = false;
 
+    private boolean triedCache = false;
+    private ConnectivityManager.NetworkCallback netCb;
+
     private final Runnable retry = new Runnable() {
+        @Override public void run() { load(); }
+    };
+
+    // בודק כל דקה אם האינטרנט חזר (בלי לרענן סתם את מה שמוצג)
+    private final Runnable netCheck = new Runnable() {
         @Override public void run() {
-            if (web != null) { offline = false; web.loadUrl(Prefs.url(MainActivity.this)); }
+            if (!triedCache) return;
+            if (online()) load(); else h.postDelayed(this, 60000);
         }
     };
+
+    private boolean online() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo ni = cm.getActiveNetworkInfo();
+            return ni != null && ni.isConnected();
+        } catch (Exception e) { return true; }
+    }
+
+    /** טעינה חכמה: עם אינטרנט - גרסה עדכנית; בלי אינטרנט - מהזיכרון השמור. */
+    private void load() {
+        if (web == null) return;
+        offline = false;
+        triedCache = !online();
+        web.getSettings().setCacheMode(triedCache
+                ? WebSettings.LOAD_CACHE_ELSE_NETWORK : WebSettings.LOAD_DEFAULT);
+        web.loadUrl(Prefs.url(this));
+    }
+
+    /** מהאתר אפשר לקרוא: HaluachTV.exit() או HaluachTV.menu() */
+    public class Bridge {
+        @JavascriptInterface public void exit() {
+            h.post(() -> leave(Prefs.UNTIL_SCREEN_ON, false));
+        }
+        @JavascriptInterface public void exitMinutes(int minutes) {
+            h.post(() -> leave(System.currentTimeMillis() + Math.max(1, minutes) * 60_000L, false));
+        }
+        @JavascriptInterface public void menu() { h.post(() -> adminMenu()); }
+        @JavascriptInterface public boolean isApp() { return true; }
+    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -64,21 +108,47 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
+        web.addJavascriptInterface(new Bridge(), "HaluachTV");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                if (req.isForMainFrame()) showOffline();
+                if (req.isForMainFrame()) onMainError();
             }
 
             @SuppressWarnings("deprecation")
             @Override
             public void onReceivedError(WebView v, int code, String desc, String url) {
-                if (Build.VERSION.SDK_INT < 23) showOffline();
+                if (Build.VERSION.SDK_INT < 23) onMainError();
             }
         });
 
-        web.loadUrl(Prefs.url(this));
+        load();
+
+        // כשהאינטרנט חוזר - מרעננים לגרסה העדכנית
+        if (Build.VERSION.SDK_INT >= 24) {
+            try {
+                netCb = new ConnectivityManager.NetworkCallback() {
+                    @Override public void onAvailable(Network n) {
+                        h.post(() -> { if (offline || triedCache) { h.removeCallbacks(retry); h.postDelayed(retry, 3000); } });
+                    }
+                };
+                ((ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).registerDefaultNetworkCallback(netCb);
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void onMainError() {
+        if (!triedCache) {
+            // אין חיבור - מציגים את מה שנשמר מהפעם הקודמת
+            triedCache = true;
+            web.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
+            h.post(() -> web.loadUrl(Prefs.url(this)));
+            h.removeCallbacks(netCheck);
+            h.postDelayed(netCheck, 60000);
+            return;
+        }
+        showOffline();
     }
 
     private void showOffline() {
@@ -177,7 +247,7 @@ public class MainActivity extends Activity {
                     switch (which) {
                         case 0: leave(System.currentTimeMillis() + 30 * 60_000L, false); break;
                         case 1: leave(Prefs.UNTIL_SCREEN_ON, false); break;
-                        case 2: offline = false; web.clearCache(false); web.loadUrl(Prefs.url(this)); break;
+                        case 2: load(); break;
                         case 3: changeUrl(); break;
                         case 4: changePassword(); break;
                         case 5:
@@ -210,7 +280,7 @@ public class MainActivity extends Activity {
                 .setView(et)
                 .setPositiveButton("שמור", (d, w) -> {
                     String u = et.getText().toString().trim();
-                    if (u.length() > 3) { Prefs.setUrl(this, u); offline = false; web.loadUrl(Prefs.url(this)); }
+                    if (u.length() > 3) { Prefs.setUrl(this, u); load(); }
                 })
                 .setNegativeButton("ביטול", null)
                 .show();
@@ -235,6 +305,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         h.removeCallbacksAndMessages(null);
+        if (netCb != null) try {
+            ((ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).unregisterNetworkCallback(netCb);
+        } catch (Exception ignored) { }
         if (web != null) web.destroy();
         super.onDestroy();
     }

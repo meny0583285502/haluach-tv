@@ -31,11 +31,7 @@ public class SetupActivity extends Activity {
         sv.addView(root);
 
         root.addView(text("הגדרה ראשונה - הלוח", 26));
-        root.addView(text("כתובת האתר:", 18));
-        final EditText url = new EditText(this);
-        url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        url.setText(Prefs.url(this));
-        root.addView(url);
+        root.addView(text("הסיסמה משמשת ליציאה מהלוח: לוחצים 5 פעמים מהר על \"חזור\" בשלט.", 17));
 
         root.addView(text("בחר סיסמת מנהל (מספרים בלבד, לפחות 4):", 18));
         final EditText pw1 = num();
@@ -70,8 +66,6 @@ public class SetupActivity extends Activity {
             String a = pw1.getText().toString(), c = pw2.getText().toString();
             if (a.length() < 4) { toast("הסיסמה קצרה מדי"); return; }
             if (!a.equals(c)) { toast("הסיסמאות לא זהות"); return; }
-            if (url.getText().toString().trim().length() < 4) { toast("חסרה כתובת אתר"); return; }
-            Prefs.setUrl(this, url.getText().toString());
             Prefs.setPassword(this, a);
             if (Prefs.guardEnabled(this)) { goMain(); return; }
             step2.setVisibility(View.VISIBLE);
