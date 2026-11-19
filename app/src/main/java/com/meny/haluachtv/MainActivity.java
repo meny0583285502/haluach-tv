@@ -189,7 +189,16 @@ public class MainActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         if (k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_ESCAPE) {
-            if (e.getAction() == KeyEvent.ACTION_UP) onBackKey();
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                // לחיצה ארוכה (2.5 שניות) על "חזור" = חלון סיסמה
+                if (e.getEventTime() - e.getDownTime() >= 2500) askPassword();
+                else onBackKey();
+            }
+            return true;
+        }
+        // נעילת עוצמת הקול - כפתורי הווליום בשלט לא עושים כלום
+        if (k == KeyEvent.KEYCODE_VOLUME_UP || k == KeyEvent.KEYCODE_VOLUME_DOWN
+                || k == KeyEvent.KEYCODE_VOLUME_MUTE) {
             return true;
         }
         if (k == KeyEvent.KEYCODE_MENU || k == KeyEvent.KEYCODE_SETTINGS) {
