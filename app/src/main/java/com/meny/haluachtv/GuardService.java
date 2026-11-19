@@ -2,18 +2,28 @@ package com.meny.haluachtv;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.inputmethod.InputMethodInfo;
+import android.view.inputmethod.InputMethodManager;
 
-/** שירות נגישות: כל פעם שנפתח מסך אחר - מחזיר את הלוח לקדמת המסך. */
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * שירות נגישות: בודק כל הזמן מה מוצג במסך.
+ * כל דבר שאינו הלוח (הגדרות, חנות, חלונית צד, כניסה לחשבון...) - מוחזר מיד ללוח.
+ */
 public class GuardService extends AccessibilityService {
 
-    private static final java.util.Set<String> SYSTEM_OK = new java.util.HashSet<>(java.util.Arrays.asList(
+    // חלונות מערכת שמותר להם להופיע (אישור ניפוי באגים, התקנה, הרשאות, ווליום)
+    private final Set<String> allowed = new HashSet<>(Arrays.asList(
             "android", "com.android.systemui",
             "com.android.packageinstaller", "com.google.android.packageinstaller",
             "com.android.permissioncontroller", "com.google.android.permissioncontroller"));
@@ -23,7 +33,7 @@ public class GuardService extends AccessibilityService {
     private long lastLaunch = 0;
 
     private final Runnable tick = new Runnable() {
-        @Override public void run() { check(); h.postDelayed(this, 20000); }
+        @Override public void run() { check(); h.postDelayed(this, 2000); }
     };
 
     private final BroadcastReceiver screenOn = new BroadcastReceiver() {
@@ -36,37 +46,47 @@ public class GuardService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        allowed.add(getPackageName());
+        // המקלדות שעל המסך - מותרות
+        try {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            for (InputMethodInfo i : imm.getEnabledInputMethodList()) allowed.add(i.getPackageName());
+        } catch (Exception ignored) { }
         try { registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON)); } catch (Exception ignored) { }
         h.postDelayed(this::bringFront, 1500);
-        h.postDelayed(tick, 20000);
+        h.postDelayed(tick, 2000);
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
-        if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence p = e.getPackageName(), c = e.getClassName();
-        if (p == null) return;
-        String pkg = p.toString();
-        if (pkg.equals(getPackageName())) { lastPkg = pkg; return; }
-        // חלונות מערכת (אישור ניפוי באגים, התקנה, הרשאות) - לא מסתירים אותם
-        if (SYSTEM_OK.contains(pkg)) return;
-        // מתעלמים ממקלדת, חלוניות עוצמה וכו' - רק מסך מלא של אפליקציה אחרת
-        if (c == null || !isActivity(pkg, c.toString())) return;
-        lastPkg = pkg;
-        h.postDelayed(this::check, 300);
+        int t = e.getEventType();
+        if (t != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && t != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return;
+        CharSequence p = e.getPackageName();
+        if (p != null) lastPkg = p.toString();
+        h.removeCallbacks(quick);
+        h.postDelayed(quick, 250);
     }
 
-    private boolean isActivity(String pkg, String cls) {
+    private final Runnable quick = this::check;
+
+    /** איזו אפליקציה מחזיקה כרגע את המסך */
+    private String activePkg() {
         try {
-            getPackageManager().getActivityInfo(new ComponentName(pkg, cls), 0);
-            return true;
-        } catch (Exception ex) {
-            return false;
-        }
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && root.getPackageName() != null) {
+                String s = root.getPackageName().toString();
+                root.recycle();
+                return s;
+            }
+        } catch (Exception ignored) { }
+        return lastPkg;
     }
 
     private void check() {
-        if (getPackageName().equals(lastPkg)) return;
+        if (!Prefs.hasPassword(this) || Prefs.paused(this)) return;
+        String pkg = activePkg();
+        if (pkg == null || pkg.isEmpty() || allowed.contains(pkg)) return;
         bringFront();
     }
 
@@ -80,6 +100,11 @@ public class GuardService extends AccessibilityService {
                 | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                 | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         try { startActivity(i); } catch (Exception ignored) { }
+        // חלונית צד/תפריט שלא נסגר ממעבר אפליקציה - סוגרים עם "חזור"
+        h.postDelayed(() -> {
+            String p = activePkg();
+            if (p != null && !p.isEmpty() && !allowed.contains(p)) performGlobalAction(GLOBAL_ACTION_BACK);
+        }, 600);
     }
 
     @Override public void onInterrupt() { }
