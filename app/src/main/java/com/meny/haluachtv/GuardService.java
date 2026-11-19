@@ -13,6 +13,11 @@ import android.view.accessibility.AccessibilityEvent;
 /** שירות נגישות: כל פעם שנפתח מסך אחר - מחזיר את הלוח לקדמת המסך. */
 public class GuardService extends AccessibilityService {
 
+    private static final java.util.Set<String> SYSTEM_OK = new java.util.HashSet<>(java.util.Arrays.asList(
+            "android", "com.android.systemui",
+            "com.android.packageinstaller", "com.google.android.packageinstaller",
+            "com.android.permissioncontroller", "com.google.android.permissioncontroller"));
+
     private final Handler h = new Handler(Looper.getMainLooper());
     private String lastPkg = "";
     private long lastLaunch = 0;
@@ -43,6 +48,8 @@ public class GuardService extends AccessibilityService {
         if (p == null) return;
         String pkg = p.toString();
         if (pkg.equals(getPackageName())) { lastPkg = pkg; return; }
+        // חלונות מערכת (אישור ניפוי באגים, התקנה, הרשאות) - לא מסתירים אותם
+        if (SYSTEM_OK.contains(pkg)) return;
         // מתעלמים ממקלדת, חלוניות עוצמה וכו' - רק מסך מלא של אפליקציה אחרת
         if (c == null || !isActivity(pkg, c.toString())) return;
         lastPkg = pkg;
