@@ -19,9 +19,12 @@ jobs:
           gradle-version: '8.7'
       - run: gradle :app:assembleRelease --no-daemon --stacktrace
       - run: cp app/build/outputs/apk/release/app-release.apk haluach-tv.apk
+      - run: cd tools && zip ../TV-Cleaner.zip TV-Cleaner.bat
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: הלוח TV - גרסה ${{ github.run_number }}
-          files: haluach-tv.apk
+          files: |
+            haluach-tv.apk
+            TV-Cleaner.zip
           make_latest: true
