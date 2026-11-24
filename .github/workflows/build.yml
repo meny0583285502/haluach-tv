@@ -14,6 +14,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: NetFree certificates
+        run: |
+          set -e
+          mkdir -p app/src/main/res/raw
+          out=app/src/main/res/raw/netfree_cas.pem
+          : > "$out"
+          topem() { openssl x509 -in "$1" -out "$2" 2>/dev/null || openssl x509 -inform DER -in "$1" -out "$2"; }
+          for n in root_ca_rsa root_ca_rsa_2037 root_ca_prime256v1 root_ca_secp384r1; do
+            curl -fsSL --retry 3 "https://netfree.link/cacert/united/$n.crt" -o "/tmp/$n.crt"
+            topem "/tmp/$n.crt" "/tmp/$n.pem"
+            cat "/tmp/$n.pem" >> "$out"
+          done
+          if curl -fsSL --retry 3 https://netfree.link/netfree-ca.crt -o /tmp/legacy.crt && topem /tmp/legacy.crt /tmp/legacy.pem; then
+            cat /tmp/legacy.pem >> "$out"
+          fi
+          echo "certificates: $(grep -c 'BEGIN CERTIFICATE' "$out")"
+          openssl crl2pkcs7 -nocrl -certfile "$out" | openssl pkcs7 -print_certs -noout | grep subject
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'

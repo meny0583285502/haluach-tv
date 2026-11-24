@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkInfo;
+import android.net.http.SslCertificate;
+import android.net.http.SslError;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,6 +20,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -114,6 +117,13 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
                 if (req.isForMainFrame()) onMainError();
+            }
+
+            // נטפרי: אם התעודה חתומה ע"י נטפרי - ממשיכים, אחרת חוסמים
+            @Override
+            public void onReceivedSslError(WebView v, SslErrorHandler handler, SslError error) {
+                if (NetFree.trusted(MainActivity.this, error)) handler.proceed();
+                else handler.cancel();
             }
 
             @SuppressWarnings("deprecation")
